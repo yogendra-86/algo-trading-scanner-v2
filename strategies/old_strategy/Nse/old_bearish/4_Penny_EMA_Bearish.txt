@@ -1,0 +1,21 @@
+STRATEGY_NAME: 4_penny_EMA_Bearish
+MARKET: NASDAQ
+STAGE: live
+SIDE: SHORT
+
+LOGIC:
+- EMA9 crosses below EMA20
+- RSI below 40
+- Volume rising across recent candles
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Short after bearish EMA crossover confirmation
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 4% to 8%
+- Suggested stop zone: near EMA20 or recent swing high

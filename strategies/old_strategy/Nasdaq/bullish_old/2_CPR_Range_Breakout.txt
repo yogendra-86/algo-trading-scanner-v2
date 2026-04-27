@@ -1,0 +1,8 @@
+latest close crossed above (pivot + (pivot - s1))
+and latest volume > 2 * sma(20, volume)
+and rsi(14) > 55
+and latest close > 100
+and latest close < 1500
+and latest volume > 200000
+and 5 minute close [=3] > 5 minute open [=2]
+and 5 minute volume [=3] > sma(20, 5 minute volume)

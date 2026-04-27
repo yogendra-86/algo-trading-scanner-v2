@@ -1,0 +1,4 @@
+latest close >= high [=3] * 0.995
+and rsi(14) > 48
+and latest close > 50
+and latest close < 2000

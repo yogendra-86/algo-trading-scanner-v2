@@ -1,0 +1,21 @@
+STRATEGY_NAME: 1_VWAP_Breakout_penny
+MARKET: NASDAQ
+STAGE: live
+SIDE: LONG
+
+LOGIC:
+- Price crosses above VWAP
+- Volume surge confirms move
+- RSI strength confirms momentum
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Break above VWAP
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 3% to 8%
+- Suggested stop zone: 2% below entry

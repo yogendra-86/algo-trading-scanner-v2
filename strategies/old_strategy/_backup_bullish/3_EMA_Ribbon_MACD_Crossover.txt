@@ -1,0 +1,10 @@
+ema(5) > ema(13)
+and ema(13) > ema(20)
+and ema(20) > ema(50)
+and macd(12,26,9) crossed above signal(12,26,9)
+and latest volume > 1.5 * sma(20, volume)
+and latest close > 100
+and latest close < 1500
+and latest volume > 200000
+and 5 minute close [=3] > 5 minute open [=2]
+and 5 minute volume [=3] > sma(20, 5 minute volume)

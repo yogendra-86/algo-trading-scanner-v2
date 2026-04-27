@@ -1,0 +1,22 @@
+STRATEGY_NAME: 5_penny_FakeBreakout_Short
+MARKET: NASDAQ
+STAGE: live
+SIDE: SHORT
+
+LOGIC:
+- Price pushes above recent resistance
+- Breakout fails quickly
+- Rejection candle has long upper wick
+- Volume spike confirms trap move
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Short after fake breakout failure confirmation
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 3% to 6%
+- Suggested stop zone: above fake breakout high

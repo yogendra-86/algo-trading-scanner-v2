@@ -1,0 +1,21 @@
+STRATEGY_NAME: 2_penny_ORB_Breakout
+MARKET: NASDAQ
+STAGE: range15
+SIDE: LONG
+
+LOGIC:
+- Break above first 15 minute high
+- Volume expansion confirms breakout
+- Price above EMA20 confirms bullish intraday trend
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Break above opening range high
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 5% to 12%
+- Suggested stop zone: below opening range low

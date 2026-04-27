@@ -1,0 +1,21 @@
+STRATEGY_NAME: 5_penny_Dip_Reversal
+MARKET: NASDAQ
+STAGE: live
+SIDE: LONG
+
+LOGIC:
+- RSI oversold and starts rising
+- Bullish engulfing candle appears
+- Price near EMA20 support / intraday support
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Buy after bullish reversal candle confirmation
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 3% to 6%
+- Suggested stop zone: below reversal low

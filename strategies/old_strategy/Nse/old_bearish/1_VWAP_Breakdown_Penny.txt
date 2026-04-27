@@ -1,0 +1,21 @@
+STRATEGY_NAME: 1_VWAP_Breakdown_penny
+MARKET: NASDAQ
+STAGE: live
+SIDE: SHORT
+
+LOGIC:
+- Price crosses below VWAP
+- Volume surge confirms breakdown
+- RSI weakness confirms momentum
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Break below VWAP
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 3% to 8%
+- Suggested stop zone: 2% above entry

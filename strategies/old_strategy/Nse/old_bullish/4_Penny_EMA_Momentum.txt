@@ -1,0 +1,21 @@
+STRATEGY_NAME: 4_penny_EMA_Momentum
+MARKET: NASDAQ
+STAGE: live
+SIDE: LONG
+
+LOGIC:
+- EMA9 crosses above EMA20
+- RSI above 60
+- Volume rising across recent candles
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Buy after bullish EMA crossover confirmation
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 4% to 8%
+- Suggested stop zone: near EMA20 or recent swing low

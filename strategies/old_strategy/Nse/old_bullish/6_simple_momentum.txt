@@ -1,0 +1,3 @@
+latest close > ema(20)
+and rsi(14) > 45
+and latest close > 50

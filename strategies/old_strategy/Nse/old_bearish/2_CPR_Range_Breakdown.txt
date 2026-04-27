@@ -1,0 +1,5 @@
+latest close <= pivot
+and rsi(14) < 52
+and latest volume > ema(20)
+and latest close > 50
+and latest close < 2000

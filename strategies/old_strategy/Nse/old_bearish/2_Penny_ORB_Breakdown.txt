@@ -1,0 +1,21 @@
+STRATEGY_NAME: 2_penny_ORB_Breakdown
+MARKET: NASDAQ
+STAGE: range15
+SIDE: SHORT
+
+LOGIC:
+- Break below first 15 minute low
+- Volume expansion confirms breakdown
+- Price below EMA20 confirms bearish intraday trend
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Break below opening range low
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 5% to 12%
+- Suggested stop zone: above opening range high

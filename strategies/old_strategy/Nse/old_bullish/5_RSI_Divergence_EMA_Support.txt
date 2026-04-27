@@ -1,0 +1,5 @@
+latest close > ema(50)
+and rsi(14) > 45
+and latest close > ema(20)
+and latest close > 50
+and latest close < 2000

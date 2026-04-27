@@ -1,0 +1,4 @@
+latest close <= low [=3] * 1.005
+and rsi(14) < 52
+and latest close > 50
+and latest close < 2000

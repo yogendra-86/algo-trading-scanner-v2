@@ -1,0 +1,8 @@
+latest close crossed below vwap
+and rsi(14) < 60
+and latest volume > 1.5 * sma(20, volume)
+and latest close > 100
+and latest close < 1500
+and latest volume > 200000
+and 5 minute close [=3] < 5 minute open [=2]
+and 5 minute volume [=3] > sma(20, 5 minute volume)

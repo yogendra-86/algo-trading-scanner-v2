@@ -1,0 +1,10 @@
+latest close < ema(50)
+and rsi(14) decreasing for 3 candles
+and 1 candle ago high > 2 candles ago high
+and latest high < 1 candle ago high
+and latest volume > sma(20, volume)
+and latest close > 100
+and latest close < 1500
+and latest volume > 200000
+and 5 minute close [=3] < 5 minute open [=2]
+and 5 minute volume [=3] > sma(20, 5 minute volume)

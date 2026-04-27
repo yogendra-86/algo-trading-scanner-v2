@@ -1,0 +1,22 @@
+STRATEGY_NAME: 3_penny_BullFlag
+MARKET: NASDAQ
+STAGE: live
+SIDE: LONG
+
+LOGIC:
+- Strong upside move in recent candles
+- Pullback happens near EMA20
+- Pullback volume contracts
+- Fresh breakout candle shows volume spike
+
+FILTERS:
+- Price between 0.5 and 10.0
+- Volume > 500000
+
+ENTRY:
+- Breakout above bull flag resistance
+
+EXIT:
+- Risk reward handled by engine
+- Suggested target zone: 5% to 10%
+- Suggested stop zone: below pullback low
