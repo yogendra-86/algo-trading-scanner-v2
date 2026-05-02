@@ -25,7 +25,7 @@ load_dotenv(dotenv_path="/opt/algo-trading-scanner-v2/.env")
 def parse_args():
     parser = argparse.ArgumentParser(description="Algo Trading Scanner V2")
     parser.add_argument("--market", required=True, choices=["NSE", "NASDAQ"])
-    parser.add_argument("--stage", required=True, choices=["prep", "live", "range15"])
+    parser.add_argument("--stage", required=True, choices=["prep", "live", "range15", "close"])
     return parser.parse_args()
 
 
@@ -106,16 +106,14 @@ def main():
 
         logger.info(f"Project root: {project_root}")
 
-        # =========================
-        # MARKET CHECK
-        # =========================
         now = datetime.now()
 
-        if not is_market_open():
+        # ✅ FIX: allow close stage even after market hours
+        if not is_market_open() and args.stage != "close":
             print("Market closed - skipping scan")
             return
 
-        if now.hour == 9 and now.minute < 25:
+        if args.stage != "close" and now.hour == 9 and now.minute < 25:
             print("Waiting for stable market data...")
             return
 
@@ -135,19 +133,58 @@ def main():
         )
 
         # =========================
-        # NO SIGNALS (FAIL-SAFE ALERT)
+        # CLOSE STAGE (NEW)
+        # =========================
+        if args.stage == "close":
+            print("Running closing stage...")
+
+            if result_df is None or result_df.empty:
+                msg = f"""
+📊 {args.market} Closing Update
+
+⚠️ No signals for today.
+
+⏱ Time: {datetime.now()}
+"""
+                send_telegram_message(msg)
+                print("Closing alert sent (no signals)")
+                return
+
+            ranker = PremiumRanker()
+            trend_service = TrendService()
+            calc = TradeCalculator()
+            conf_engine = ConfidenceEngine()
+
+            trend_info = trend_service.get_current_trend(args.market)
+            top_bullish, top_bearish = ranker.rank(result_df)
+
+            msg = f"📊 {args.market} Closing Summary\n\n"
+            msg += build_message(
+                args.market,
+                trend_info,
+                top_bullish,
+                top_bearish,
+                calc,
+                conf_engine
+            )
+
+            send_telegram_message(msg)
+            print("Closing alert sent")
+            return
+
+        # =========================
+        # NORMAL FLOW (LIVE / PREP)
         # =========================
         if result_df is None or result_df.empty:
             logger.warning("No signals generated.")
 
             msg = f"""
-                📊 {args.market} Market Update
+📊 {args.market} Market Update
 
-                ⚠️ No strong signals found.
+⚠️ No strong signals found.
 
-                ⏱ Time: {datetime.now()}
-            """
-
+⏱ Time: {datetime.now()}
+"""
             send_telegram_message(msg)
             print("Fallback alert sent")
             return
@@ -163,15 +200,7 @@ def main():
         calc = TradeCalculator()
         conf_engine = ConfidenceEngine()
 
-        # =========================
-        # TREND
-        # =========================
-        signals = result_df.to_dict("records")
         trend_info = trend_service.get_current_trend(args.market)
-
-        # =========================
-        # RANKING
-        # =========================
         top_bullish, top_bearish = ranker.rank(result_df)
 
         print("\n🟢 TOP 5 BULLISH")
@@ -196,8 +225,6 @@ def main():
         print(msg)
 
         success = send_telegram_message(msg)
-        print("Bot Started....")
-        print("Running scan at:", datetime.now())
 
         if success:
             logger.info("Telegram alert sent successfully")

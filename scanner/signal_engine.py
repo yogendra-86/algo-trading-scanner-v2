@@ -24,7 +24,7 @@ def fetch_data(symbol, interval, retries=2):
         try:
             df = yf.download(
                 symbol,
-                period="10d",   # 🔥 increased from 5d
+                period="10d",
                 interval=interval,
                 progress=False,
                 threads=False
@@ -33,18 +33,13 @@ def fetch_data(symbol, interval, retries=2):
             if df is None or df.empty:
                 return None
 
-            # Flatten MultiIndex
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            # Remove duplicates
             df = df.loc[:, ~df.columns.duplicated()]
-
-            # Pandas 2 fix
             df = df.ffill()
 
             print(f"{symbol} ({interval}) → {df.index[-1]}")
-
             return df
 
         except Exception as e:
@@ -56,7 +51,7 @@ def fetch_data(symbol, interval, retries=2):
 
 
 # ==============================
-# PREPARE DATA (FIXED)
+# PREPARE DATA
 # ==============================
 def prepare_df(df, min_candles=20):
     try:
@@ -64,8 +59,6 @@ def prepare_df(df, min_candles=20):
             return None
 
         df = add_indicators(df)
-
-        # Drop NaN AFTER indicators
         df.dropna(inplace=True)
 
         if len(df) < min_candles:
@@ -109,18 +102,18 @@ def run_stage_for_market(symbols, market, stage):
                 continue
 
             # ======================
-            # PREPARE DATA (FIXED THRESHOLDS)
+            # PREPARE DATA
             # ======================
-            df_5m = prepare_df(df_5m, 50)   # detailed
-            df_15m = prepare_df(df_15m, 30) # medium
-            df_1h = prepare_df(df_1h, 15)   # 🔥 FIXED
+            df_5m = prepare_df(df_5m, 50)
+            df_15m = prepare_df(df_15m, 30)
+            df_1h = prepare_df(df_1h, 15)
 
             if df_5m is None or df_15m is None or df_1h is None:
                 print(f"{symbol} skipped due to insufficient data")
                 continue
 
             # ======================
-            # TREND FILTER
+            # TREND DETECTION
             # ======================
             trend_15m = get_trend(df_15m)
             trend_1h = get_trend(df_1h)
@@ -129,54 +122,45 @@ def run_stage_for_market(symbols, market, stage):
 
             direction = trend_15m
 
-            # 🔥 Relaxed logic
-            if direction not in ["bullish", "bearish"]:
-                direction = "bullish"  # fallback for testing
-
             # ======================
-            # APPLY STRATEGIES
+            # STRATEGY SELECTION
             # ======================
             if direction == "bullish":
-
-                for strategy in BULLISH_STRATEGIES:
-                    try:
-                        result = strategy(df_5m)
-
-                        print(f"{symbol} - {strategy.__name__} → {result}")
-
-                        if result:
-                            print(f"🔥 SIGNAL FOUND: {symbol} via {strategy.__name__}")
-
-                            results.append({
-                                "symbol": symbol,
-                                "strategy": strategy.__name__,
-                                "direction": "bullish",
-                                "price": float(df_5m["Close"].iloc[-1])
-                            })
-
-                    except Exception as e:
-                        print(f"Strategy error {symbol}: {e}")
+                strategies_to_run = BULLISH_STRATEGIES
 
             elif direction == "bearish":
+                strategies_to_run = BEARISH_STRATEGIES
 
-                for strategy in BEARISH_STRATEGIES:
-                    try:
-                        result = strategy(df_5m)
+            else:
+                # ✅ Neutral → run both
+                print(f"{symbol} → Neutral trend → running BOTH strategies")
+                strategies_to_run = BULLISH_STRATEGIES + BEARISH_STRATEGIES
 
-                        print(f"{symbol} - {strategy.__name__} → {result}")
+            # ======================
+            # EXECUTE STRATEGIES
+            # ======================
+            for strategy in strategies_to_run:
+                try:
+                    result = strategy(df_5m)
 
-                        if result:
-                            print(f"🔥 SIGNAL FOUND: {symbol} via {strategy.__name__}")
+                    print(f"{symbol} - {strategy.__name__} → {result}")
 
-                            results.append({
-                                "symbol": symbol,
-                                "strategy": strategy.__name__,
-                                "direction": "bearish",
-                                "price": float(df_5m["Close"].iloc[-1])
-                            })
+                    if result:
+                        direction_label = (
+                            "bullish" if strategy in BULLISH_STRATEGIES else "bearish"
+                        )
 
-                    except Exception as e:
-                        print(f"Strategy error {symbol}: {e}")
+                        print(f"🔥 SIGNAL FOUND: {symbol} via {strategy.__name__}")
+
+                        results.append({
+                            "symbol": symbol,
+                            "strategy": strategy.__name__,
+                            "direction": direction_label,
+                            "price": float(df_5m["Close"].iloc[-1])
+                        })
+
+                except Exception as e:
+                    print(f"Strategy error {symbol}: {e}")
 
         except Exception as e:
             logger.warning(f"{symbol} processing failed: {e}")
