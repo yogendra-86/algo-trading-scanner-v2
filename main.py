@@ -70,6 +70,7 @@ def load_symbols(project_root, market):
 # BUILD TELEGRAM MESSAGE
 # ==============================
 def build_message(market, trend_info, top_bullish, top_bearish, calc, conf_engine):
+
     msg = f"📊 {market} Market Trend: {trend_info['trend']} ({trend_info.get('confidence','N/A')})\n\n"
 
     msg += "🟢 Top 5 Bullish\n"
@@ -77,20 +78,22 @@ def build_message(market, trend_info, top_bullish, top_bearish, calc, conf_engin
         trade = calc.calculate(row["price"], "bullish")
         conf = conf_engine.calculate(row["score"])
 
-        msg += (
-            f"{row['symbol']} | Entry:{trade['entry']} "
-            f"SL:{trade['sl']} Target:{trade['target']} {conf}\n"
-        )
+        entry = round(trade["entry"], 2)
+        sl = round(trade["sl"], 2)
+        target = round(trade["target"], 2)
+
+        msg += f"{row['symbol']} | Entry:{entry} SL:{sl} Target:{target} {conf}\n"
 
     msg += "\n🔴 Top 5 Bearish\n"
     for _, row in top_bearish.iterrows():
         trade = calc.calculate(row["price"], "bearish")
         conf = conf_engine.calculate(row["score"])
 
-        msg += (
-            f"{row['symbol']} | Entry:{trade['entry']} "
-            f"SL:{trade['sl']} Target:{trade['target']} {conf}\n"
-        )
+        entry = round(trade["entry"], 2)
+        sl = round(trade["sl"], 2)
+        target = round(trade["target"], 2)
+
+        msg += f"{row['symbol']} | Entry:{entry} SL:{sl} Target:{target} {conf}\n"
 
     return msg
 
@@ -131,7 +134,6 @@ def main():
             market=args.market,
             stage=args.stage
         )
-
         # =========================
         # CLOSE STAGE (NEW)
         # =========================
@@ -156,7 +158,19 @@ def main():
             conf_engine = ConfidenceEngine()
 
             trend_info = trend_service.get_current_trend(args.market)
-            top_bullish, top_bearish = ranker.rank(result_df)
+            # Aggregate by symbol
+            agg_df = (
+                result_df.groupby(["symbol", "direction"], as_index=False)
+              .agg({
+                  "score": "max",   # best signal per symbol
+                  "price": "last"
+                  })
+                 )
+
+            print("===== AGGREGATED =====")
+            print(agg_df.head())
+
+            top_bullish, top_bearish = ranker.rank(agg_df)
 
             msg = f"📊 {args.market} Closing Summary\n\n"
             msg += build_message(

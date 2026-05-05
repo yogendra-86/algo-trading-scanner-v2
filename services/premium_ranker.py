@@ -7,56 +7,35 @@ class PremiumRanker:
         if df is None or df.empty:
             return pd.DataFrame(), pd.DataFrame()
 
-        # Score based on strategy weight
-        strategy_score = {
-            "trend_following": 5,
-            "vwap_strength": 4,
-            "breakout_momentum": 5,
-            "pullback_buy": 3,
-            "simple_momentum": 2,
-            "trend_breakdown": 5,
-            "vwap_weakness": 4,
-            "breakdown_momentum": 5,
-            "pullback_sell": 3,
-            "simple_weakness": 2,
-        }
+        # ✅ USE ACTUAL SCORE (DO NOT OVERRIDE)
+        if "score" not in df.columns:
+            print("❌ Score column missing in dataframe")
+            return pd.DataFrame(), pd.DataFrame()
 
-        df["score"] = df["strategy"].map(strategy_score).fillna(1)
-
-        # Aggregate per symbol
+        # ✅ Aggregate per symbol + direction
         agg_df = (
-            df.groupby("symbol")
+            df.groupby(["symbol", "direction"], as_index=False)
             .agg({
-                "score": "sum",
+                "score": "max",   # take best strategy score
                 "price": "last"
             })
-            .reset_index()
         )
 
-        # Split bullish / bearish
-        bullish = df[df["strategy"].str.contains("trend|momentum|buy")]
-        bearish = df[df["strategy"].str.contains("breakdown|weakness|sell")]
+        # ✅ Split using direction (correct field)
+        bullish = agg_df[agg_df["direction"] == "bullish"]
+        bearish = agg_df[agg_df["direction"] == "bearish"]
 
+        # ✅ Rank
         bullish_rank = (
-            bullish.groupby("symbol")
-            .agg({
-                  "score": "sum",
-                  "price": "last"
-            })
-            .sort_values(by="score", ascending=False)
+            bullish.sort_values(by="score", ascending=False)
             .head(5)
-            .reset_index()
+            .reset_index(drop=True)
         )
 
         bearish_rank = (
-            bearish.groupby("symbol")
-            .agg({
-                "score": "sum",
-                "price": "last"
-            })
-            .sort_values(by="score", ascending=False)
+            bearish.sort_values(by="score", ascending=False)
             .head(5)
-            .reset_index()
+            .reset_index(drop=True)
         )
 
         return bullish_rank, bearish_rank

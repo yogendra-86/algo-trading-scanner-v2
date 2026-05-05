@@ -1,11 +1,21 @@
-def breakout_entry(df):
-    latest = df.iloc[-1]
-    volume = latest["Volume"]
-    vol_sma = latest["volume_sma"]
+def breakout_entry(df, market="NSE"):
+    score = 0
 
-    high_20 = df["High"].rolling(20).max().iloc[-2]
+    close = df["Close"].iloc[-1]
+    prev_high = df["High"].iloc[-2]
+    volume = df["Volume"].iloc[-1]
+    avg_volume = df["Volume"].rolling(20).mean().iloc[-1]
 
-    return (
-        latest["Close"] > high_20 * 1.002 and
-        volume > 1.3 * vol_sma
-    )
+    breakout_pct = 1.003 if market == "NSE" else 1.006
+    vol_multiplier = 1.5 if market == "NSE" else 2.0
+
+    if close > prev_high * breakout_pct:
+        score += 2
+
+    if volume > avg_volume * vol_multiplier:
+        score += 1
+
+    if close > df["Close"].rolling(5).mean().iloc[-1]:
+        score += 1
+
+    return score

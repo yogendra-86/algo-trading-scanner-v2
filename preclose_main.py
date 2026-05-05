@@ -1,158 +1,123 @@
+import pandas as pd
+import yfinance as yf
+from datetime import datetime
 import argparse
-from pathlib import Path
-
-from config.settings import Settings
-from scanner.strategy_loader import load_strategies
-from scanner.signal_engine import run_stage_for_market
-from utils.logging_utils import get_logger
-from services.snapshot import SnapshotService
-from services.premium_ranker import PremiumRanker
-from services.scanner_gateway import ScannerGateway
-
-logger = get_logger("preclose_main")
-
-market_folder_map = {
-    "NSE": "Nse",
-    "NASDAQ": "Nasdaq"
-}
+from utils.telegram_utils import send_telegram_message
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Algo Trading Scanner V2 - Preclose")
-    parser.add_argument("--market", required=True, choices=["NSE", "NASDAQ"])
-    parser.add_argument("--strategies-dir", default="strategies")
+# ==============================
+# ARGUMENT PARSER
+# ==============================
+def parse_args():
+    parser = argparse.ArgumentParser(description="Pre-close P&L Summary")
+    parser.add_argument("--market", default="NSE", choices=["NSE", "NASDAQ"])
     return parser.parse_args()
 
 
-# ================================
-# SNAPSHOT FILTER (SAFE + FALLBACK)
-# ================================
-def apply_snapshot_filter(market: str, signals: list) -> list:
-    snapshot_service = SnapshotService()
-    snapshot = snapshot_service.load_opening_snapshot(market)
+# ==============================
+# FETCH LTP
+# ==============================
+def fetch_ltp(symbol):
+    try:
+        df = yf.download(symbol, period="1d", interval="5m", progress=False)
 
-    # 🚨 fallback if snapshot missing or empty
-    if not snapshot or (
-        not snapshot.get("bullish") and not snapshot.get("bearish")
-    ):
-        logger.warning("⚠️ Snapshot empty or missing → skipping filter")
-        return signals
+        if df is None or df.empty:
+            return None
 
-    allowed_symbols = set()
+        return float(df["Close"].iloc[-1])
 
-    for item in snapshot.get("bullish", []):
-        if isinstance(item, dict):
-            allowed_symbols.add(item.get("symbol"))
-
-    for item in snapshot.get("bearish", []):
-        if isinstance(item, dict):
-            allowed_symbols.add(item.get("symbol"))
-
-    filtered = [
-        s for s in signals if s.get("symbol") in allowed_symbols
-    ]
-
-    logger.info(
-        "Snapshot filter applied | Before=%s After=%s",
-        len(signals),
-        len(filtered),
-    )
-
-    return filtered
+    except Exception as e:
+        print(f"Error fetching LTP for {symbol}: {e}")
+        return None
 
 
-# ================================
-# MAIN
-# ================================
-def main() -> None:
+# ==============================
+# CALCULATE P&L
+# ==============================
+def calculate_pnl(entry, ltp, direction):
+    if ltp is None:
+        return 0
+
+    if direction == "bullish":
+        return ltp - entry
+    else:
+        return entry - ltp
+
+
+# ==============================
+# MAIN FUNCTION
+# ==============================
+def main():
     args = parse_args()
-    settings = Settings.load()
 
-    project_root = Path(settings.project_root)
-    strategies_dir = project_root / args.strategies_dir / market_folder_map[args.market]
+    today = datetime.now().strftime("%Y-%m-%d")
+    file_path = f"output/{args.market}/{today}/{args.market}_live_FINAL.csv"
 
-    logger.info("Project root: %s", project_root)
-    logger.info("Strategies dir: %s", strategies_dir)
+    try:
+        df = pd.read_csv(file_path)
+    except Exception as e:
+        print(f"❌ No data found: {e}")
+        send_telegram_message(f"⚠️ {args.market} No data available for pre-close analysis.")
+        return
 
-    # ================================
-    # STEP 1: RUN SCANNER (LIVE STAGE)
-    # ================================
-    strategies = load_strategies(strategies_dir)
+    if df.empty:
+        send_telegram_message(f"⚠️ {args.market} No trades generated today.")
+        return
 
-    result = run_stage_for_market(
-        market=args.market,
-        stage="live",
-        strategies=strategies,
-        settings=settings,
-    )
+    msg = f"📊 {args.market} Pre-Close Summary\n\n"
 
-    logger.info("Scanner execution completed")
+    total_profit = 0
+    total_trades = 0
+    win_count = 0
 
-    # ================================
-    # STEP 2: LOAD SIGNALS FROM CSV
-    # ================================
-    gateway = ScannerGateway()
-    payload = gateway.get_latest_available_scan(args.market, stage="live")
+    # ==============================
+    # LOOP THROUGH TRADES
+    # ==============================
+    for _, row in df.iterrows():
+        symbol = row["symbol"]
+        entry = float(row["price"])
+        direction = row["direction"]
 
-    signals = payload.get("signals", [])
-    logger.info("Total signals fetched: %s", len(signals))
+        ltp = fetch_ltp(symbol)
 
-    # ================================
-    # STEP 3: APPLY SNAPSHOT FILTER
-    # ================================
-    signals = apply_snapshot_filter(args.market, signals)
+        if ltp is None:
+            continue
 
-    # ================================
-    # STEP 4: PREMIUM RANKING
-    # ================================
-    ranker = PremiumRanker(
-        min_price=50 if args.market == "NSE" else 1,
-        max_price=2000 if args.market == "NSE" else 500,
-        min_rr=1.0,
-        top_n=5,
-    )
+        pnl = calculate_pnl(entry, ltp, direction)
+        total_profit += pnl
+        total_trades += 1
 
-    bullish_top5, bearish_top5 = ranker.get_balanced_top5(signals)
+        if pnl > 0:
+            win_count += 1
 
-    # ================================
-    # STEP 5: FINAL OUTPUT
-    # ================================
-    print("\n==============================")
-    print(f"{args.market} PRE-CLOSE ALERT")
-    print("==============================\n")
+        status = "🟢 Profit" if pnl > 0 else "🔴 Loss"
 
-    # 🟢 Bullish
-    print("🟢 Top 5 Bullish Stocks:\n")
-    if bullish_top5:
-        for i, s in enumerate(bullish_top5, 1):
-            print(
-                f"{i}. {s.get('symbol')} | "
-                f"Score={s.get('premium_score')} | "
-                f"RR={s.get('rr')} | "
-                f"Entry={s.get('entry')} | "
-                f"SL={s.get('sl')} | "
-                f"Target={s.get('target')}"
-            )
-    else:
-        print("No bullish signals found")
+        msg += (
+            f"{symbol} | Entry:{round(entry, 2)} "
+            f"LTP:{round(ltp, 2)} "
+            f"P&L:{round(pnl, 2)} {status}\n"
+        )
 
-    # 🔴 Bearish
-    print("\n🔴 Top 5 Bearish Stocks:\n")
-    if bearish_top5:
-        for i, s in enumerate(bearish_top5, 1):
-            print(
-                f"{i}. {s.get('symbol')} | "
-                f"Score={s.get('premium_score')} | "
-                f"RR={s.get('rr')} | "
-                f"Entry={s.get('entry')} | "
-                f"SL={s.get('sl')} | "
-                f"Target={s.get('target')}"
-            )
-    else:
-        print("No bearish signals found")
+    # ==============================
+    # SUMMARY SECTION
+    # ==============================
+    win_rate = (win_count / total_trades * 100) if total_trades > 0 else 0
 
-    logger.info("Preclose alert generated successfully")
+    msg += "\n-------------------------\n"
+    msg += f"💰 Total P&L: {round(total_profit, 2)}\n"
+    msg += f"📈 Trades: {total_trades}\n"
+    msg += f"✅ Win Rate: {round(win_rate, 2)}%\n"
+    msg += f"⏱ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+    # ==============================
+    # SEND TELEGRAM
+    # ==============================
+    send_telegram_message(msg)
+    print("✅ Pre-close alert sent successfully")
 
 
+# ==============================
+# ENTRY POINT
+# ==============================
 if __name__ == "__main__":
     main()

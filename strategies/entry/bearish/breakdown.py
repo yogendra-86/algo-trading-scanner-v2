@@ -1,11 +1,21 @@
-def breakdown_entry(df):
-    latest = df.iloc[-1]
-    volume = latest["Volume"]
-    vol_sma = latest["volume_sma"]
+def breakdown_entry(df, market="NSE"):
+    score = 0
 
-    low_20 = df["Low"].rolling(20).min().iloc[-2]
+    close = df["Close"].iloc[-1]
+    prev_low = df["Low"].iloc[-2]
+    volume = df["Volume"].iloc[-1]
+    avg_volume = df["Volume"].rolling(20).mean().iloc[-1]
 
-    return (
-        latest["Close"] < low_20 * 0.998 and
-        volume > 1.3 * vol_sma
-    )
+    breakdown_pct = 0.997 if market == "NSE" else 0.994
+    vol_multiplier = 1.5 if market == "NSE" else 2.0
+
+    if close < prev_low * breakdown_pct:
+        score += 2
+
+    if volume > avg_volume * vol_multiplier:
+        score += 1
+
+    if close < df["Close"].rolling(5).mean().iloc[-1]:
+        score += 1
+
+    return score

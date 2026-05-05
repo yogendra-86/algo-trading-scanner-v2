@@ -141,11 +141,11 @@ def run_stage_for_market(symbols, market, stage):
             # ======================
             for strategy in strategies_to_run:
                 try:
-                    result = strategy(df_5m)
+                    score = strategy(df_5m, market)
 
-                    print(f"{symbol} - {strategy.__name__} → {result}")
+                    print(f"{symbol} - {strategy.__name__} → {score}")
 
-                    if result:
+                    if score >= 3:
                         direction_label = (
                             "bullish" if strategy in BULLISH_STRATEGIES else "bearish"
                         )
@@ -156,7 +156,8 @@ def run_stage_for_market(symbols, market, stage):
                             "symbol": symbol,
                             "strategy": strategy.__name__,
                             "direction": direction_label,
-                            "price": float(df_5m["Close"].iloc[-1])
+                            "price": float(df_5m["Close"].iloc[-1]),
+                            "score":score
                         })
 
                 except Exception as e:
