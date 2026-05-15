@@ -112,10 +112,16 @@ def build_message(
     bearish_rank,
     trend_info,
     sl_service,
-    confidence_engine
+    confidence_engine,
+    strategy_mode
 ):
 
-    msg = f"📊 {market} Market Trend: {trend_info}\n\n"
+    msg = (
+        f"📊 {market} Market Trend: "
+        f"{trend_info}\n"
+        f"🧠 Strategy Mode: "
+        f"{strategy_mode}\n\n"
+    )
 
     # ======================================
     # TXT STRATEGY MODE
@@ -259,6 +265,20 @@ def main():
     confidence_engine = ConfidenceEngine()
 
     # ======================================
+    # STRATEGY MODE
+    # ======================================
+    if args.txt_strategy:
+
+        strategy_mode = (
+            args.txt_strategy
+            .replace(".txt", "")
+        )
+
+    else:
+
+        strategy_mode = "Inbuild"
+
+    # ======================================
     # MESSAGE
     # ======================================
     msg = build_message(
@@ -267,7 +287,8 @@ def main():
         bearish_rank,
         trend_info,
         sl_service,
-        confidence_engine
+        confidence_engine,
+        strategy_mode
     )
 
     # ======================================

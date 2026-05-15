@@ -1,0 +1,7 @@
+TYPE=BULLISH
+NAME=SMART_BREAKOUT
+
+ENTRY:
+rsi > 60 AND close > ema20
+
+SCORE=4

@@ -1,0 +1,9 @@
+TYPE=BULLISH
+NAME=EMA_POWER
+
+ENTRY:
+close > ema20
+ema20 > ema50
+rsi > 55
+
+SCORE=4

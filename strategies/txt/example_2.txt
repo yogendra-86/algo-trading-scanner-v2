@@ -1,0 +1,9 @@
+TYPE=BEARISH
+NAME=BREAKDOWN
+
+ENTRY:
+close < prev_low
+close < vwap
+rsi < 42
+
+SCORE=5

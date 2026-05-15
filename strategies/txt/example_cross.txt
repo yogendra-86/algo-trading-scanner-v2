@@ -1,0 +1,7 @@
+TYPE=BULLISH
+NAME=EMA_CROSS
+
+ENTRY:
+ema20 crosses ema50
+
+SCORE=5

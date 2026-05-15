@@ -1,0 +1,10 @@
+TYPE=BULLISH
+NAME=RSI_EMA_BREAKOUT
+
+ENTRY:
+close > ema20
+close > vwap
+rsi > 60
+volume > avg_volume
+
+SCORE=4
