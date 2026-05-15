@@ -1,0 +1,9 @@
+TYPE=BULLISH
+NAME=TXT_BREAKOUT
+
+ENTRY:
+close > sma20
+close > vwap
+volume > avg_volume
+
+SCORE=3

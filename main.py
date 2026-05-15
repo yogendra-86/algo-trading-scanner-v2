@@ -1,261 +1,295 @@
 import argparse
-import os
-import pandas as pd
-from dotenv import load_dotenv
-from config.settings import Settings
-from scanner.signal_engine import run_stage_for_market
-from utils.logging_utils import get_logger
+import logging
 from datetime import datetime
+import os
+
+import pandas as pd
+import pytz
+from dotenv import load_dotenv
+
+from scanner.signal_engine import SignalEngine
 from services.premium_ranker import PremiumRanker
-from services.trend_service import TrendService
-from services.trade_calculator import TradeCalculator
+from services.sl_target_service import SLTargetService
 from services.confidence_engine import ConfidenceEngine
-from utils.telegram_utils import send_telegram_message
+from services.trend_service import TrendService
 from utils.market_session import is_market_open
+from utils.telegram_utils import send_telegram_message
 
-logger = get_logger("main")
+# ==========================================
+# LOAD ENV
+# ==========================================
+load_dotenv(dotenv_path=".env")
 
-# Load ENV
-load_dotenv(dotenv_path="/opt/algo-trading-scanner-v2/.env")
+# ==========================================
+# LOGGING
+# ==========================================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 
-# ==============================
-# ARGUMENT PARSER
-# ==============================
+# ==========================================
+# ARGUMENTS
+# ==========================================
 def parse_args():
-    parser = argparse.ArgumentParser(description="Algo Trading Scanner V2")
-    parser.add_argument("--market", required=True, choices=["NSE", "NASDAQ"])
-    parser.add_argument("--stage", required=True, choices=["prep", "live", "range15", "close"])
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--market",
+        required=True,
+        choices=["NSE", "NASDAQ"]
+    )
+
+    parser.add_argument(
+        "--stage",
+        default="live"
+    )
+
+    parser.add_argument(
+        "--force",
+        action="store_true"
+    )
+
+    # ======================================
+    # TXT STRATEGY
+    # ======================================
+    parser.add_argument(
+        "--txt-strategy",
+        default=None,
+        help="Run specific TXT strategy only"
+    )
+
     return parser.parse_args()
 
 
-# ==============================
-# LOAD SYMBOLS
-# ==============================
-def load_symbols(project_root, market):
-    file_path = os.path.join(
-        project_root,
-        "data",
-        "watchlists",
-        f"{market.lower()}_symbols.csv"
+# ==========================================
+# SAVE ALERTED TRADES
+# ==========================================
+def save_alerted_trades(
+    market,
+    bullish_rank,
+    bearish_rank
+):
+
+    ist = pytz.timezone("Asia/Kolkata")
+
+    today = datetime.now(ist).strftime("%Y-%m-%d")
+
+    output_dir = f"output/{market}/{today}"
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    alerted_df = pd.concat([
+        bullish_rank,
+        bearish_rank
+    ])
+
+    file_path = (
+        f"{output_dir}/"
+        f"{market}_ALERTED_TRADES.csv"
     )
 
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Symbols file not found: {file_path}")
-
-    df = pd.read_csv(file_path, header=None)
-
-    symbols = (
-        df[0]
-        .astype(str)
-        .str.strip()
-        .str.replace("$", "", regex=False)
+    alerted_df.to_csv(
+        file_path,
+        index=False
     )
 
-    symbols = symbols[
-        (symbols != "") &
-        (symbols.str.lower() != "symbol") &
-        (~symbols.str.contains("^nan$", case=False))
-    ]
-
-    symbols = symbols.tolist()
-
-    if market == "NSE":
-        symbols = [s if s.endswith(".NS") else f"{s}.NS" for s in symbols]
-
-    return symbols
+    logger.info(
+        f"Alerted trades saved: {file_path}"
+    )
 
 
-# ==============================
+# ==========================================
 # BUILD TELEGRAM MESSAGE
-# ==============================
-def build_message(market, trend_info, top_bullish, top_bearish, calc, conf_engine):
+# ==========================================
+def build_message(
+    market,
+    bullish_rank,
+    bearish_rank,
+    trend_info,
+    sl_service,
+    confidence_engine
+):
 
-    msg = f"📊 {market} Market Trend: {trend_info['trend']} ({trend_info.get('confidence','N/A')})\n\n"
+    msg = f"📊 {market} Market Trend: {trend_info}\n\n"
 
-    msg += "🟢 Top 5 Bullish\n"
-    for _, row in top_bullish.iterrows():
-        trade = calc.calculate(row["price"], "bullish")
-        conf = conf_engine.calculate(row["score"])
+    # ======================================
+    # TXT STRATEGY MODE
+    # ======================================
+    if bullish_rank.empty and bearish_rank.empty:
+        return "No signals found"
 
-        entry = round(trade["entry"], 2)
-        sl = round(trade["sl"], 2)
-        target = round(trade["target"], 2)
+    # ======================================
+    # BULLISH
+    # ======================================
+    if not bullish_rank.empty:
 
-        msg += f"{row['symbol']} | Entry:{entry} SL:{sl} Target:{target} {conf}\n"
+        msg += "🟢 Top Bullish\n"
 
-    msg += "\n🔴 Top 5 Bearish\n"
-    for _, row in top_bearish.iterrows():
-        trade = calc.calculate(row["price"], "bearish")
-        conf = conf_engine.calculate(row["score"])
+        for _, row in bullish_rank.iterrows():
 
-        entry = round(trade["entry"], 2)
-        sl = round(trade["sl"], 2)
-        target = round(trade["target"], 2)
+            sl, target = sl_service.calculate(
+                row["price"],
+                "bullish"
+            )
 
-        msg += f"{row['symbol']} | Entry:{entry} SL:{sl} Target:{target} {conf}\n"
+            confidence = confidence_engine.calculate(
+                row["score"]
+            )
+
+            msg += (
+                f"{row['symbol']} | "
+                f"Entry:{row['price']:.2f} "
+                f"SL:{sl:.2f} "
+                f"Target:{target:.2f} "
+                f"{confidence}\n"
+            )
+
+        msg += "\n"
+
+    # ======================================
+    # BEARISH
+    # ======================================
+    if not bearish_rank.empty:
+
+        msg += "🔴 Top Bearish\n"
+
+        for _, row in bearish_rank.iterrows():
+
+            sl, target = sl_service.calculate(
+                row["price"],
+                "bearish"
+            )
+
+            confidence = confidence_engine.calculate(
+                row["score"]
+            )
+
+            msg += (
+                f"{row['symbol']} | "
+                f"Entry:{row['price']:.2f} "
+                f"SL:{sl:.2f} "
+                f"Target:{target:.2f} "
+                f"{confidence}\n"
+            )
 
     return msg
 
 
-# ==============================
+# ==========================================
 # MAIN
-# ==============================
+# ==========================================
 def main():
-    try:
-        args = parse_args()
-        settings = Settings.load()
-        project_root = settings.project_root
 
-        logger.info(f"Project root: {project_root}")
+    args = parse_args()
 
-        now = datetime.now()
+    logger.info(
+        f"Running for market: {args.market}"
+    )
 
-        # ✅ FIX: allow close stage even after market hours
-        if not is_market_open() and args.stage != "close":
-            print("Market closed - skipping scan")
-            return
-
-        if args.stage != "close" and now.hour == 9 and now.minute < 25:
-            print("Waiting for stable market data...")
-            return
-
-        # =========================
-        # LOAD SYMBOLS
-        # =========================
-        symbols = load_symbols(project_root, args.market)
-        logger.info(f"Loaded {len(symbols)} symbols for {args.market}")
-
-        # =========================
-        # RUN SCANNER
-        # =========================
-        result_df = run_stage_for_market(
-            symbols=symbols,
-            market=args.market,
-            stage=args.stage
+    # ======================================
+    # MARKET HOURS CHECK
+    # ======================================
+    if (
+        not is_market_open(args.market)
+        and args.stage != "close"
+        and not args.force
+    ):
+        logger.info(
+            "Market closed - skipping scan"
         )
-        # =========================
-        # CLOSE STAGE (NEW)
-        # =========================
-        if args.stage == "close":
-            print("Running closing stage...")
+        return
 
-            if result_df is None or result_df.empty:
-                msg = f"""
-📊 {args.market} Closing Update
+    # ======================================
+    # SIGNAL ENGINE
+    # ======================================
+    signal_engine = SignalEngine()
 
-⚠️ No signals for today.
+    result_df = signal_engine.run(
+        market=args.market,
+        stage=args.stage,
+        txt_strategy=args.txt_strategy
+    )
 
-⏱ Time: {datetime.now()}
-"""
-                send_telegram_message(msg)
-                print("Closing alert sent (no signals)")
-                return
+    if result_df is None or result_df.empty:
 
-            ranker = PremiumRanker()
-            trend_service = TrendService()
-            calc = TradeCalculator()
-            conf_engine = ConfidenceEngine()
+        logger.warning("No signals found")
+        return
 
-            trend_info = trend_service.get_current_trend(args.market)
-            # Aggregate by symbol
-            agg_df = (
-                result_df.groupby(["symbol", "direction"], as_index=False)
-              .agg({
-                  "score": "max",   # best signal per symbol
-                  "price": "last"
-                  })
-                 )
+    logger.info(
+        f"Extracted signals: {len(result_df)}"
+    )
 
-            print("===== AGGREGATED =====")
-            print(agg_df.head())
+    # ======================================
+    # RANK SIGNALS
+    # ======================================
+    ranker = PremiumRanker()
 
-            top_bullish, top_bearish = ranker.rank(agg_df)
+    bullish_rank, bearish_rank = ranker.rank(
+        result_df
+    )
 
-            msg = f"📊 {args.market} Closing Summary\n\n"
-            msg += build_message(
-                args.market,
-                trend_info,
-                top_bullish,
-                top_bearish,
-                calc,
-                conf_engine
-            )
+    # ======================================
+    # SAVE ALERTED TRADES
+    # ======================================
+    save_alerted_trades(
+        args.market,
+        bullish_rank,
+        bearish_rank
+    )
 
-            send_telegram_message(msg)
-            print("Closing alert sent")
-            return
+    # ======================================
+    # TREND
+    # ======================================
+    trend_service = TrendService()
 
-        # =========================
-        # NORMAL FLOW (LIVE / PREP)
-        # =========================
-        if result_df is None or result_df.empty:
-            logger.warning("No signals generated.")
+    trend_info = trend_service.get_trend(
+        result_df
+    )
 
-            msg = f"""
-📊 {args.market} Market Update
+    # ======================================
+    # SERVICES
+    # ======================================
+    sl_service = SLTargetService()
 
-⚠️ No strong signals found.
+    confidence_engine = ConfidenceEngine()
 
-⏱ Time: {datetime.now()}
-"""
-            send_telegram_message(msg)
-            print("Fallback alert sent")
-            return
+    # ======================================
+    # MESSAGE
+    # ======================================
+    msg = build_message(
+        args.market,
+        bullish_rank,
+        bearish_rank,
+        trend_info,
+        sl_service,
+        confidence_engine
+    )
 
-        logger.info(f"Extracted signals: {len(result_df)}")
-        print(f"Extracted signals: {len(result_df)}")
+    # ======================================
+    # TELEGRAM
+    # ======================================
+    success = send_telegram_message(msg)
 
-        # =========================
-        # SERVICES
-        # =========================
-        ranker = PremiumRanker()
-        trend_service = TrendService()
-        calc = TradeCalculator()
-        conf_engine = ConfidenceEngine()
+    if success:
 
-        trend_info = trend_service.get_current_trend(args.market)
-        top_bullish, top_bearish = ranker.rank(result_df)
-
-        print("\n🟢 TOP 5 BULLISH")
-        print(top_bullish)
-
-        print("\n🔴 TOP 5 BEARISH")
-        print(top_bearish)
-
-        # =========================
-        # TELEGRAM
-        # =========================
-        msg = build_message(
-            args.market,
-            trend_info,
-            top_bullish,
-            top_bearish,
-            calc,
-            conf_engine
+        logger.info(
+            "Telegram alert sent successfully"
         )
 
-        print("Sending Telegram message...")
-        print(msg)
+    else:
 
-        success = send_telegram_message(msg)
-
-        if success:
-            logger.info("Telegram alert sent successfully")
-        else:
-            logger.error("Telegram failed")
-
-    except Exception as e:
-        logger.error(f"CRITICAL ERROR: {e}")
-
-        try:
-            send_telegram_message(f"🚨 SYSTEM ERROR:\n{str(e)}")
-        except:
-            pass
+        logger.error(
+            "Telegram alert failed"
+        )
 
 
-# ==============================
-# ENTRY POINT
-# ==============================
+# ==========================================
+# ENTRY
+# ==========================================
 if __name__ == "__main__":
     main()

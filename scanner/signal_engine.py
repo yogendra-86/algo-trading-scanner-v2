@@ -1,190 +1,351 @@
+import logging
 import os
-import time
+
 import pandas as pd
+import pytz
 import yfinance as yf
 from datetime import datetime
 
-from utils.logging_utils import get_logger
+from strategies.entry.bullish.breakout import breakout_entry
+from strategies.entry.bullish.pullback import pullback_entry
+from strategies.entry.bullish.vwap_strength import vwap_strength
 
-from strategies.common.indicators import add_indicators
-from strategies.common.trend_filter import get_trend
-from strategies.config.strategy_list import (
-    BULLISH_STRATEGIES,
-    BEARISH_STRATEGIES
-)
+from strategies.entry.bearish.breakdown import breakdown_entry
+from strategies.entry.bearish.pullback import pullback_sell
+from strategies.entry.bearish.vwap_weakness import vwap_weakness
 
-logger = get_logger("signal_engine")
+from strategies.txt_strategy_loader import TxtStrategyLoader
+from strategies.txt_strategy_evaluator import TxtStrategyEvaluator
+
+logger = logging.getLogger(__name__)
 
 
-# ==============================
-# FETCH DATA
-# ==============================
-def fetch_data(symbol, interval, retries=2):
-    for attempt in range(retries):
+class SignalEngine:
+
+    # ======================================
+    # LOAD SYMBOLS
+    # ======================================
+    def load_symbols(self, market):
+
+        file_map = {
+            "NSE": "data/watchlists/nse_symbols.csv",
+            "NASDAQ": "data/watchlists/nasdaq_symbols.csv"
+        }
+
+        file_path = file_map.get(market)
+
+        df = pd.read_csv(file_path)
+
+        symbols = df["symbol"].dropna().tolist()
+
+        if market == "NSE":
+
+            symbols = [
+                s if s.endswith(".NS")
+                else f"{s}.NS"
+                for s in symbols
+            ]
+
+        logger.info(
+            f"Loaded {len(symbols)} symbols for {market}"
+        )
+
+        return symbols
+
+    # ======================================
+    # FETCH DATA
+    # ======================================
+    def fetch_data(self, symbol):
+
         try:
+
             df = yf.download(
                 symbol,
-                period="10d",
-                interval=interval,
-                progress=False,
-                threads=False
+                period="5d",
+                interval="5m",
+                progress=False
             )
 
             if df is None or df.empty:
                 return None
 
+            # ==================================
+            # FIX MULTIINDEX
+            # ==================================
             if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
 
-            df = df.loc[:, ~df.columns.duplicated()]
-            df = df.ffill()
+                df.columns = (
+                    df.columns.get_level_values(0)
+                )
 
-            print(f"{symbol} ({interval}) → {df.index[-1]}")
+            df = df.loc[
+                :,
+                ~df.columns.duplicated()
+            ]
+
+            # ==================================
+            # VWAP
+            # ==================================
+            df["vwap"] = (
+                (
+                    df["Close"] * df["Volume"]
+                ).cumsum()
+                / df["Volume"].cumsum()
+            )
+
             return df
 
         except Exception as e:
-            print(f"Fetch error for {symbol}: {e}")
 
-        time.sleep(1)
+            logger.error(
+                f"{symbol} data fetch error: {e}"
+            )
 
-    return None
-
-
-# ==============================
-# PREPARE DATA
-# ==============================
-def prepare_df(df, min_candles=20):
-    try:
-        if df is None or df.empty:
             return None
 
-        df = add_indicators(df)
-        df.dropna(inplace=True)
+    # ======================================
+    # SAVE RESULTS
+    # ======================================
+    def save_results(
+        self,
+        result_df,
+        market,
+        stage
+    ):
 
-        if len(df) < min_candles:
-            return None
+        ist = pytz.timezone("Asia/Kolkata")
 
-        return df
+        today = datetime.now(ist).strftime(
+            "%Y-%m-%d"
+        )
 
-    except Exception as e:
-        print(f"Indicator error: {e}")
-        return None
+        output_dir = (
+            f"output/{market}/{today}"
+        )
 
+        os.makedirs(output_dir, exist_ok=True)
 
-# ==============================
-# MAIN ENGINE
-# ==============================
-def run_stage_for_market(symbols, market, stage):
+        file_path = (
+            f"{output_dir}/"
+            f"{market}_{stage}_FINAL.csv"
+        )
 
-    results = []
+        result_df.to_csv(
+            file_path,
+            index=False
+        )
 
-    logger.info(f"Loaded {len(symbols)} symbols for {market}")
+        logger.info(
+            f"Final report generated: {file_path}"
+        )
 
-    for symbol in symbols:
+    # ======================================
+    # RUN ENGINE
+    # ======================================
+    def run(
+        self,
+        market,
+        stage,
+        txt_strategy=None
+    ):
 
-        try:
-            print("\n==============================")
-            print(f"Processing: {symbol}")
+        symbols = self.load_symbols(market)
 
-            # ======================
-            # FETCH DATA
-            # ======================
-            df_5m = fetch_data(symbol, "5m")
-            df_15m = fetch_data(symbol, "15m")
-            df_1h = fetch_data(symbol, "1h")
+        results = []
 
-            if (
-                df_5m is None or df_5m.empty or
-                df_15m is None or df_15m.empty or
-                df_1h is None or df_1h.empty
-            ):
-                print(f"{symbol} skipped due to missing data")
+        # ==================================
+        # TXT STRATEGIES
+        # ==================================
+        txt_loader = TxtStrategyLoader()
+
+        txt_evaluator = TxtStrategyEvaluator()
+
+        txt_strategies = (
+            txt_loader.load_strategies(
+                txt_strategy
+            )
+        )
+
+        logger.info(
+            f"Loaded TXT strategies: "
+            f"{len(txt_strategies)}"
+        )
+
+        for symbol in symbols:
+
+            df_5m = self.fetch_data(symbol)
+
+            if df_5m is None or df_5m.empty:
                 continue
 
-            # ======================
-            # PREPARE DATA
-            # ======================
-            df_5m = prepare_df(df_5m, 50)
-            df_15m = prepare_df(df_15m, 30)
-            df_1h = prepare_df(df_1h, 15)
+            latest_price = float(
+                df_5m["Close"].iloc[-1]
+            )
 
-            if df_5m is None or df_15m is None or df_1h is None:
-                print(f"{symbol} skipped due to insufficient data")
-                continue
+            candle_time = str(
+                df_5m.index[-1]
+            )
 
-            # ======================
-            # TREND DETECTION
-            # ======================
-            trend_15m = get_trend(df_15m)
-            trend_1h = get_trend(df_1h)
+            # ==================================
+            # DEFAULT STRATEGY MODE
+            # ==================================
+            if txt_strategy is None:
 
-            print(f"{symbol} → Trend15m: {trend_15m}, Trend1h: {trend_1h}")
+                bullish_strategies = [
+                    (
+                        "breakout_entry",
+                        breakout_entry
+                    ),
+                    (
+                        "pullback_entry",
+                        pullback_entry
+                    ),
+                    (
+                        "vwap_strength",
+                        vwap_strength
+                    ),
+                ]
 
-            direction = trend_15m
+                bearish_strategies = [
+                    (
+                        "breakdown_entry",
+                        breakdown_entry
+                    ),
+                    (
+                        "pullback_sell",
+                        pullback_sell
+                    ),
+                    (
+                        "vwap_weakness",
+                        vwap_weakness
+                    ),
+                ]
 
-            # ======================
-            # STRATEGY SELECTION
-            # ======================
-            if direction == "bullish":
-                strategies_to_run = BULLISH_STRATEGIES
+                # ==============================
+                # BULLISH
+                # ==============================
+                for (
+                    strategy_name,
+                    strategy_func
+                ) in bullish_strategies:
 
-            elif direction == "bearish":
-                strategies_to_run = BEARISH_STRATEGIES
+                    try:
 
-            else:
-                # ✅ Neutral → run both
-                print(f"{symbol} → Neutral trend → running BOTH strategies")
-                strategies_to_run = BULLISH_STRATEGIES + BEARISH_STRATEGIES
-
-            # ======================
-            # EXECUTE STRATEGIES
-            # ======================
-            for strategy in strategies_to_run:
-                try:
-                    score = strategy(df_5m, market)
-
-                    print(f"{symbol} - {strategy.__name__} → {score}")
-
-                    if score >= 3:
-                        direction_label = (
-                            "bullish" if strategy in BULLISH_STRATEGIES else "bearish"
+                        score = strategy_func(
+                            df_5m,
+                            market
                         )
 
-                        print(f"🔥 SIGNAL FOUND: {symbol} via {strategy.__name__}")
+                        if score >= 2:
+
+                            results.append({
+                                "symbol": symbol,
+                                "strategy": strategy_name,
+                                "direction": "bullish",
+                                "price": latest_price,
+                                "score": score,
+                                "candle_time": candle_time
+                            })
+
+                    except Exception as e:
+
+                        logger.error(
+                            f"{symbol} bullish "
+                            f"strategy error: {e}"
+                        )
+
+                # ==============================
+                # BEARISH
+                # ==============================
+                for (
+                    strategy_name,
+                    strategy_func
+                ) in bearish_strategies:
+
+                    try:
+
+                        score = strategy_func(
+                            df_5m,
+                            market
+                        )
+
+                        if score >= 2:
+
+                            results.append({
+                                "symbol": symbol,
+                                "strategy": strategy_name,
+                                "direction": "bearish",
+                                "price": latest_price,
+                                "score": score,
+                                "candle_time": candle_time
+                            })
+
+                    except Exception as e:
+
+                        logger.error(
+                            f"{symbol} bearish "
+                            f"strategy error: {e}"
+                        )
+
+            # ==================================
+            # TXT STRATEGY MODE
+            # ==================================
+            else:
+
+                for txt_strat in txt_strategies:
+
+                    try:
+
+                        score = (
+                            txt_evaluator.evaluate(
+                                txt_strat,
+                                df_5m
+                            )
+                        )
+
+                        if score <= 0:
+                            continue
+
+                        direction = (
+                            "bullish"
+                            if txt_strat["TYPE"]
+                            == "BULLISH"
+                            else "bearish"
+                        )
 
                         results.append({
                             "symbol": symbol,
-                            "strategy": strategy.__name__,
-                            "direction": direction_label,
-                            "price": float(df_5m["Close"].iloc[-1]),
-                            "score":score
+                            "strategy": txt_strat["NAME"],
+                            "direction": direction,
+                            "price": latest_price,
+                            "score": score,
+                            "candle_time": candle_time
                         })
 
-                except Exception as e:
-                    print(f"Strategy error {symbol}: {e}")
+                    except Exception as e:
 
-        except Exception as e:
-            logger.warning(f"{symbol} processing failed: {e}")
-            continue
+                        logger.error(
+                            f"TXT strategy "
+                            f"error: {e}"
+                        )
 
-    # ======================
-    # SAVE OUTPUT
-    # ======================
-    if results:
-        df_final = pd.DataFrame(results)
+        if not results:
 
-        today = datetime.now().strftime("%Y-%m-%d")
-        output_dir = f"output/{market}/{today}"
-        os.makedirs(output_dir, exist_ok=True)
+            logger.warning(
+                "No signals generated"
+            )
+            return pd.DataFrame()
 
-        file_path = f"{output_dir}/{market}_{stage}_FINAL.csv"
-        df_final.to_csv(file_path, index=False)
+        result_df = pd.DataFrame(results)
 
-        logger.info(f"Final report generated: {file_path}")
-        logger.info(f"Total signals: {len(df_final)}")
+        logger.info(
+            f"Total signals: {len(result_df)}"
+        )
 
-        return df_final
+        self.save_results(
+            result_df,
+            market,
+            stage
+        )
 
-    else:
-        logger.info("No signals generated")
-        return pd.DataFrame()
+        return result_df
