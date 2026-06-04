@@ -1,0 +1,11 @@
+TYPE=BEARISH
+NAME=NASDAQ_BREAKDOWN
+TIMEFRAME=5m
+
+close < vwap
+close < ema20
+rsi14 < 40
+volume > sma20_volume * 2
+close < min6_low
+
+SCORE=5

@@ -12,7 +12,6 @@ from services.premium_ranker import PremiumRanker
 from services.sl_target_service import SLTargetService
 from services.confidence_engine import ConfidenceEngine
 from services.trend_service import TrendService
-from services.trade_registry import TradeRegistry
 from utils.market_session import is_market_open
 from utils.telegram_utils import send_telegram_message
 
@@ -114,17 +113,10 @@ def build_message(
     trend_info,
     sl_service,
     confidence_engine,
-    strategy_mode,
-    alert_uid
+    strategy_mode
 ):
 
-    msg = (
-        f"🆔 Alert ID: {alert_uid}\n\n"
-        f"📊 {market} Market Trend: "
-        f"{trend_info}\n"
-        f"🧠 Strategy Mode: "
-        f"{strategy_mode}\n\n"
-    )
+    msg = f"📊 {market} Market Trend: {trend_info}\n\n"
 
     # ======================================
     # TXT STRATEGY MODE
@@ -139,7 +131,7 @@ def build_message(
 
         msg += "🟢 Top Bullish\n"
 
-        for idx, (_, row) in enumerate(bullish_rank.iterrows(), start=1):
+        for _, row in bullish_rank.iterrows():
 
             sl, target = sl_service.calculate(
                 row["price"],
@@ -151,7 +143,6 @@ def build_message(
             )
 
             msg += (
-                f"[S{idx:03d}] "
                 f"{row['symbol']} | "
                 f"Entry:{row['price']:.2f} "
                 f"SL:{sl:.2f} "
@@ -168,9 +159,7 @@ def build_message(
 
         msg += "🔴 Top Bearish\n"
 
-        offset = len(bullish_rank)
-
-        for idx, (_, row) in enumerate(bearish_rank.iterrows(), start=1):
+        for _, row in bearish_rank.iterrows():
 
             sl, target = sl_service.calculate(
                 row["price"],
@@ -182,7 +171,6 @@ def build_message(
             )
 
             msg += (
-                f"[S{offset + idx:03d}] "
                 f"{row['symbol']} | "
                 f"Entry:{row['price']:.2f} "
                 f"SL:{sl:.2f} "
@@ -246,32 +234,6 @@ def main():
         result_df
     )
 
-    if args.txt_strategy:
-
-        strategy_mode = (
-            args.txt_strategy
-            .replace(".txt", "")
-        )
-
-    else:
-
-        strategy_mode = "Inbuild"
-
-    registry = TradeRegistry()
-
-    alert_uid, signal_map = (
-        registry.register_alert(
-            args.market,
-            strategy_mode,
-            bullish_rank,
-            bearish_rank
-        )
-    )
-
-    logger.info(
-        f"Registered Alert: {alert_uid}"
-    )
-
     # ======================================
     # SAVE ALERTED TRADES
     # ======================================
@@ -306,9 +268,7 @@ def main():
         bearish_rank,
         trend_info,
         sl_service,
-        confidence_engine,
-        strategy_mode,
-        alert_uid
+        confidence_engine
     )
 
     # ======================================
@@ -334,4 +294,3 @@ def main():
 # ==========================================
 if __name__ == "__main__":
     main()
-

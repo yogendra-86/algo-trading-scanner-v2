@@ -1,0 +1,14 @@
+TYPE=BULLISH
+NAME=NASDAQ_BREAKOUT
+TIMEFRAME=5m
+
+ENTRY:
+close > vwap
+close > 2
+close < 50
+volume > sma20_volume * 2
+rsi14 > 65
+close > max6_high
+close > ema20
+
+SCORE=5

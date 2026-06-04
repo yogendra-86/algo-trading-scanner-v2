@@ -1,0 +1,14 @@
+TYPE=BULLISH
+NAME=MOMENTUM_BREAKOUT
+TIMEFRAME=5m
+
+ENTRY:
+close > vwap
+close > 50
+close < 1000
+volume > sma20_volume * 1.5
+rsi14 > 60
+close > max6_high
+close > ema20
+
+SCORE=5

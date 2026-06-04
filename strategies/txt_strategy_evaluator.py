@@ -17,19 +17,29 @@ class TxtStrategyEvaluator:
 
         token = token.strip()
 
-        # ==================================
-        # NUMBER
-        # ==================================
+        # Direct variable
+        if token in values:
+            return values[token]
+
+        # Numeric literal
         try:
             return float(token)
 
         except:
             pass
 
-        # ==================================
-        # VARIABLE
-        # ==================================
-        return values.get(token)
+        # Arithmetic expression
+        try:
+
+            return eval(
+                token,
+                {"__builtins__": {}},
+                values
+            )
+
+        except:
+
+            return None
 
     # ======================================
     # EVALUATE SINGLE CONDITION
@@ -74,9 +84,6 @@ class TxtStrategyEvaluator:
         ):
             return False
 
-        # ==================================
-        # OPERATORS
-        # ==================================
         if operator == ">":
             return left_value > right_value
 
@@ -128,17 +135,11 @@ class TxtStrategyEvaluator:
         ):
             return False
 
-        # ==================================
-        # BULLISH CROSS
-        # ==================================
         bullish_cross = (
             previous_left <= previous_right
             and current_left > current_right
         )
 
-        # ==================================
-        # BEARISH CROSS
-        # ==================================
         bearish_cross = (
             previous_left >= previous_right
             and current_left < current_right
@@ -157,9 +158,6 @@ class TxtStrategyEvaluator:
 
         try:
 
-            # ==================================
-            # BASIC VALUES
-            # ==================================
             close = float(
                 df["Close"].iloc[-1]
             )
@@ -216,6 +214,11 @@ class TxtStrategyEvaluator:
             # ==================================
             # EMA
             # ==================================
+            ema9 = EMAIndicator(
+                close=df["Close"],
+                window=9
+            ).ema_indicator().iloc[-1]
+
             ema20 = EMAIndicator(
                 close=df["Close"],
                 window=20
@@ -229,10 +232,68 @@ class TxtStrategyEvaluator:
             # ==================================
             # RSI
             # ==================================
-            rsi = RSIIndicator(
+            rsi14 = RSIIndicator(
                 close=df["Close"],
                 window=14
             ).rsi().iloc[-1]
+
+            # ==================================
+            # VOLUME SMA
+            # ==================================
+            sma20_volume = (
+                df["Volume"]
+                .rolling(20)
+                .mean()
+                .iloc[-1]
+            )
+
+            # ==================================
+            # BREAKOUT LEVELS
+            # ==================================
+            max6_high = (
+                df["High"]
+                .rolling(6)
+                .max()
+                .iloc[-2]
+            )
+
+            max10_high = (
+                df["High"]
+                .rolling(10)
+                .max()
+                .iloc[-2]
+            )
+
+            max20_high = (
+                df["High"]
+                .rolling(20)
+                .max()
+                .iloc[-2]
+            )
+
+            # ==================================
+            # BREAKDOWN LEVELS
+            # ==================================
+            min6_low = (
+                df["Low"]
+                .rolling(6)
+                .min()
+                .iloc[-2]
+            )
+
+            min10_low = (
+                df["Low"]
+                .rolling(10)
+                .min()
+                .iloc[-2]
+            )
+
+            min20_low = (
+                df["Low"]
+                .rolling(20)
+                .min()
+                .iloc[-2]
+            )
 
             # ==================================
             # VALUE MAP
@@ -250,6 +311,7 @@ class TxtStrategyEvaluator:
                 "sma20": sma20,
                 "sma50": sma50,
 
+                "ema9": ema9,
                 "ema20": ema20,
                 "ema50": ema50,
 
@@ -258,7 +320,18 @@ class TxtStrategyEvaluator:
                 "volume": volume,
                 "avg_volume": avg_volume,
 
-                "rsi": rsi,
+                "rsi": rsi14,
+                "rsi14": rsi14,
+
+                "sma20_volume": sma20_volume,
+
+                "max6_high": max6_high,
+                "max10_high": max10_high,
+                "max20_high": max20_high,
+
+                "min6_low": min6_low,
+                "min10_low": min10_low,
+                "min20_low": min20_low
             }
 
             # ==================================
@@ -287,32 +360,23 @@ class TxtStrategyEvaluator:
                 "rsi": RSIIndicator(
                     close=df["Close"],
                     window=14
-                ).rsi().iloc[-2],
+                ).rsi().iloc[-2]
             }
 
             # ==================================
             # EVALUATE CONDITIONS
             # ==================================
-            for condition in strategy[
-                "conditions"
-            ]:
-                # ==============================
-                # CROSSOVER
-                # ==============================
+            for condition in strategy["conditions"]:
+
                 if " crosses " in condition:
 
-                    result = (
-                        self.evaluate_crossover(
-                            condition,
-                            values,
-                            previous_values
-                        )
+                    result = self.evaluate_crossover(
+                        condition,
+                        values,
+                        previous_values
                     )
 
-                # ==============================
-                # AND LOGIC
-                # ==============================
-                if " AND " in condition:
+                elif " AND " in condition:
 
                     parts = condition.split(
                         " AND "
@@ -326,9 +390,6 @@ class TxtStrategyEvaluator:
                         for part in parts
                     )
 
-                # ==============================
-                # OR LOGIC
-                # ==============================
                 elif " OR " in condition:
 
                     parts = condition.split(
@@ -343,23 +404,21 @@ class TxtStrategyEvaluator:
                         for part in parts
                     )
 
-                # ==============================
-                # SINGLE CONDITION
-                # ==============================
                 else:
 
-                    result = (
-                        self.evaluate_condition(
-                            condition,
-                            values
-                        )
+                    result = self.evaluate_condition(
+                        condition,
+                        values
                     )
 
                 if not result:
                     return 0
 
             return int(
-                strategy.get("SCORE", 1)
+                strategy.get(
+                    "SCORE",
+                    1
+                )
             )
 
         except Exception as e:

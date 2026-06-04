@@ -55,14 +55,14 @@ class SignalEngine:
     # ======================================
     # FETCH DATA
     # ======================================
-    def fetch_data(self, symbol):
+    def fetch_data(self, symbol, interval="5m"):
 
         try:
 
             df = yf.download(
                 symbol,
                 period="5d",
-                interval="5m",
+                interval=interval,
                 progress=False
             )
 
@@ -286,7 +286,6 @@ class SignalEngine:
                             f"{symbol} bearish "
                             f"strategy error: {e}"
                         )
-
             # ==================================
             # TXT STRATEGY MODE
             # ==================================
@@ -296,10 +295,29 @@ class SignalEngine:
 
                     try:
 
+                        # ======================
+                        # TIMEFRAME
+                        # ======================
+                        timeframe = txt_strat.get(
+                            "TIMEFRAME",
+                            "5m"
+                        )
+
+                        tf_df = self.fetch_data(
+                            symbol,
+                            interval=timeframe
+                        )
+
+                        if (
+                            tf_df is None
+                            or tf_df.empty
+                        ):
+                            continue
+
                         score = (
                             txt_evaluator.evaluate(
                                 txt_strat,
-                                df_5m
+                                tf_df
                             )
                         )
 
@@ -314,12 +332,28 @@ class SignalEngine:
                         )
 
                         results.append({
+
                             "symbol": symbol,
-                            "strategy": txt_strat["NAME"],
-                            "direction": direction,
-                            "price": latest_price,
+
+                            "strategy":
+                                txt_strat["NAME"],
+
+                            "direction":
+                                direction,
+
+                            "price": float(
+                                tf_df["Close"]
+                                .iloc[-1]
+                            ),
+
                             "score": score,
-                            "candle_time": candle_time
+
+                            "timeframe":
+                                timeframe,
+
+                            "candle_time": str(
+                                tf_df.index[-1]
+                            )
                         })
 
                     except Exception as e:
