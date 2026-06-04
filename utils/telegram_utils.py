@@ -41,3 +41,47 @@ def send_telegram_message(message):
     except Exception as e:
         print("Telegram error:", e)
         return False
+
+def send_telegram_message_to_chat(chat_id, message
+):
+
+    BOT_TOKEN = os.getenv(
+        "TELEGRAM_BOT_TOKEN"
+    )
+
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/sendMessage"
+    )
+
+    response = requests.post(
+        url,
+        data={
+            "chat_id": chat_id,
+            "text": message
+        },
+        timeout=15
+    )
+
+    return (
+        response.status_code == 200
+    )
+
+
+def get_updates():
+
+    BOT_TOKEN = os.getenv(
+        "TELEGRAM_BOT_TOKEN"
+    )
+
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/getUpdates"
+    )
+
+    response = requests.get(
+        url,
+        timeout=15
+    )
+
+    return response.json()

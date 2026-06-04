@@ -53,6 +53,29 @@ class AlertService:
         )
         """)
 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS paper_trades (
+
+            paper_trade_uid TEXT PRIMARY KEY,
+
+            alert_uid TEXT,
+
+            signal_uid TEXT,
+
+            symbol TEXT,
+
+            direction TEXT,
+
+            quantity INTEGER,
+
+            entry_price REAL,
+
+            status TEXT,
+
+            created_at TEXT
+        )
+        """)
+
         self.conn.commit()
 
     def generate_alert_uid(self):
