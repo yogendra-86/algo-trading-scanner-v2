@@ -20,3 +20,9 @@ output/
 # IDE
 .vscode/
 .idea/
+
+# Runtime databases
+data/
+
+# Backup files
+*.save
