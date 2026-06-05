@@ -223,3 +223,105 @@ class TelegramCommandService:
             True,
             msg
         )
+
+    def get_my_trades(self):
+
+        service = PaperTradeService()
+
+        trades = service.get_open_trades()
+
+        if not trades:
+
+            return (
+                False,
+                "No open paper trades"
+            )
+
+        msg = (
+            "OPEN PAPER TRADES\n\n"
+        )
+
+        for trade in trades:
+
+            msg += (
+
+                f"{trade[0]}\n"
+
+                f"{trade[1]} | "
+
+                f"{trade[2]} | "
+
+                f"Qty:{trade[3]} | "
+
+                f"Entry:{trade[4]:.2f}\n\n"
+            )
+
+        return (
+            True,
+            msg
+        )
+
+    def square_off_trade(self, trade_uid):
+
+        service = PaperTradeService()
+        trade = service.close_trade(trade_uid)
+
+        if not trade:
+
+            return (
+                False,
+                "Trade not found or already closed"
+            )
+
+        msg = (
+
+            "Trade Closed\n\n"
+
+            f"{trade['trade_uid']}\n\n"
+
+            f"Symbol: "
+            f"{trade['symbol']}\n"
+
+            f"Exit Price: "
+            f"{trade['exit_price']:.2f}\n"
+
+            f"PnL: "
+            f"{trade['pnl']:.2f}\n\n"
+
+            "Status: CLOSED"
+        )
+
+        return (
+            True,
+            msg
+        )
+
+    def get_closed_trades(self):
+        service = PaperTradeService()
+        trades = service.get_closed_trades()
+        if not trades:
+            return (
+                False,
+                "No closed trades"
+            )
+
+        total_pnl = 0
+        msg = "CLOSED PAPER TRADES\n\n"
+
+        for trade in trades:
+            total_pnl += float(trade[5] or 0)
+            msg += (
+                f"{trade[0]}\n"
+                f"{trade[1]}\n"
+                f"PnL: {trade[5]:.2f}\n\n"
+            )
+
+        msg += (
+            f"\nTotal PnL: "
+            f"{total_pnl:.2f}"
+        )
+
+        return (
+            True,
+            msg
+        )

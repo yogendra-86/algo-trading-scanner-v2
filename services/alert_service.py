@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 import pytz
-
+from services.sl_target_service import SLTargetService
 
 class AlertService:
 
@@ -46,6 +46,10 @@ class AlertService:
             direction TEXT,
 
             entry_price REAL,
+
+            stop_loss REAL,
+
+            target REAL,
 
             score INTEGER,
 
@@ -133,12 +137,42 @@ class AlertService:
         row,
         strategy_mode
     ):
+        sl_service = SLTargetService()
+
+        stop_loss, target = (
+            sl_service.calculate(
+                float(row.get("price", 0)),
+                row["direction"]
+            )
+         )
 
         cursor = self.conn.cursor()
 
         cursor.execute("""
-        INSERT INTO signals
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO signals (
+
+            signal_uid,
+
+            alert_uid,
+
+            symbol,
+
+            strategy,
+
+            direction,
+
+            entry_price,
+
+            stop_loss,
+
+            target,
+
+            score,
+
+            status
+
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
 
             signal_uid,
@@ -152,6 +186,10 @@ class AlertService:
             row["direction"],
 
             float(row.get("price", 0)),
+
+            stop_loss,
+
+            target,
 
             int(row.get("score", 0)),
 

@@ -126,48 +126,39 @@ while True:
                 ).strip()
             )
 
-            if text.startswith(
-                "/papertrade"
-            ):
+            if text == "/closedtrades":
+                success, msg = service.get_closed_trades()
+                send_telegram_message_to_chat(chat_id,msg)
 
-                parts = (
-                    text.split()
-                )
+            if text == "/mytrades":
+                success, msg = service.get_my_trades()
+                send_telegram_message_to_chat(chat_id,msg)
+
+            if text.startswith("/sqr"):
+                parts = text.split()
+                if len(parts) != 2:
+                    send_telegram_message_to_chat(chat_id,"Usage:\n/sqr PT-000001")
+                else:
+                    success, msg = (service.square_off_trade(parts[1]))
+                    send_telegram_message_to_chat(chat_id,msg)
+
+            if text.startswith ("/papertrade"):
+
+                parts = text.split()
 
                 if len(parts) != 3:
 
-                    send_telegram_message_to_chat(
-
-                        chat_id,
-
-                        (
+                    send_telegram_message_to_chat(chat_id,
                             "Usage:\n"
                             "/papertrade "
                             "ALERT_UID "
                             "SIGNAL_UID"
                         )
-                    )
 
                 else:
 
-                    success, msg = (
-                        service
-                        .handle_papertrade_command(
-
-                            chat_id,
-
-                            parts[1],
-
-                            parts[2]
-                        )
-                    )
-
-                    send_telegram_message_to_chat(
-
-                        chat_id,
-
-                        msg
-                    )
+                    success, msg = service.handle_papertrade_command(chat_id, parts[1], parts[2])
+                    send_telegram_message_to_chat(chat_id, msg)
 
             elif text.isdigit():
 
